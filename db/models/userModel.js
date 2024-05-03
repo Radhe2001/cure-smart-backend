@@ -21,6 +21,10 @@ const userSchema = mongoose.Schema({
 		type: String,
 		default: '',
 	},
+	image: {
+		type: String,
+		default: '',
+	},
 	gender: {
 		type: String,
 		default: 'male',
@@ -31,7 +35,7 @@ const userSchema = mongoose.Schema({
 	},
 	language: {
 		type: String,
-		default: 'english',
+		default: 'English',
 	},
 	address: {
 		type: String,
