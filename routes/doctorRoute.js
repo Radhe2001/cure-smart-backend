@@ -1,13 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../db/models/userModel');
+const RegistrationRequest = require('../db/models/registrationRequestModel');
 const Prescription = require('../db/models/prescriptionModel');
+const Doctor = require('../db/models/doctorModel');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { log } = require('console');
-const prescriptionModel = require('../db/models/prescriptionModel');
 router.use(express.json());
 require('dotenv').config();
 
@@ -17,18 +16,18 @@ router.get('/', (req, res) => {
 
 router.post('/register', (req, res) => {
 	const { body } = req;
-	User.find({ name: body.name, email: body.email })
+	Doctor.find({ name: body.name, email: body.email })
 		.then((user) => {
 			if (user.length > 0) {
 				res.status(400).json({ msg: 'User already exists' });
 			} else {
-				const user = new User(body);
+				const user = new RegistrationRequest(body);
 				user.save()
-					.then((data) => {
-						res.status(200).json({
-							msg: 'User registered succcessfully',
-						});
-					})
+					.then((data) =>
+						res
+							.status(200)
+							.json({ msg: 'User registered succcessfully' })
+					)
 					.catch((err) =>
 						res
 							.status(500)
@@ -42,7 +41,7 @@ router.post('/register', (req, res) => {
 });
 
 router.post('/login', (req, res) => {
-	User.findOne({ email: req.body.email, password: req.body.password })
+	Doctor.findOne({ email: req.body.email, password: req.body.password })
 		.then((data) => {
 			if (data) {
 				const token = jwt.sign(
@@ -50,7 +49,7 @@ router.post('/login', (req, res) => {
 					process.env.SECRET
 				);
 				res.status(200).json({ token: token });
-			} else res.status(400).json({ msg: 'No such user exists' });
+			} else res.status(400).json({ msg: 'No such Doctor exists' });
 		})
 		.catch((err) =>
 			res
@@ -62,7 +61,7 @@ router.post('/login', (req, res) => {
 router.get('/get', (req, res) => {
 	const authHeader = req.headers.authorization;
 	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	User.findOne({
+	Doctor.findOne({
 		_id: decodedVal.id,
 		email: decodedVal.email,
 		name: decodedVal.name,
@@ -92,7 +91,7 @@ router.post('/basicprofile', upload.single('file'), (req, res) => {
 	const authHeader = req.headers.authorization;
 	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
 	const fileName = file ? file.filename : '';
-	User.updateOne(
+	Doctor.updateOne(
 		{ _id: decodedVal.id, email: decodedVal.email, name: decodedVal.name },
 		{
 			$set: {
@@ -101,29 +100,9 @@ router.post('/basicprofile', upload.single('file'), (req, res) => {
 				gender: body.gender,
 				phone: body.phone,
 				email: body.email,
-				language: body.language,
-				address: body.address,
+				specialization: body.specialization,
+				description: body.description,
 				image: fileName,
-			},
-		}
-	)
-		.then((data) => res.status(200).json({ msg: 'success' }))
-		.catch((err) => res.status(400).json({ msg: 'failure' }));
-});
-
-router.post('/medicalprofile', (req, res) => {
-	const { body } = req;
-	const authHeader = req.headers.authorization;
-	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	User.updateOne(
-		{ _id: decodedVal.id, email: decodedVal.email, name: decodedVal.name },
-		{
-			$set: {
-				bloodGroup: body.bloodGroup,
-				height: body.height,
-				weight: body.weight,
-				illness: body.illness,
-				allergy: body.allergy,
 			},
 		}
 	)
@@ -135,14 +114,14 @@ router.post('/setpassword', (req, res) => {
 	const { body } = req;
 	const authHeader = req.headers.authorization;
 	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	User.findOne({
+	Doctor.findOne({
 		_id: decodedVal.id,
 		email: decodedVal.email,
 		name: decodedVal.name,
 	})
 		.then((user) => {
 			if (user.password === body.oldPassword) {
-				User.updateOne(
+				Doctor.updateOne(
 					{
 						_id: decodedVal.id,
 						email: decodedVal.email,
@@ -169,11 +148,62 @@ router.post('/setpassword', (req, res) => {
 		.catch((err) => res.status(402).json({ mes: 'Unauthorized access' }));
 });
 
+router.get('/detail/:id', (req, res) => {
+	Doctor.findById(req.params.id)
+		.then((data) => res.status(200).json({ user: data }))
+		.catch((err) => res.status(500).json({ mes: "Doctor doesn't exists" }));
+});
+
+router.post(
+	'/prescriptionRequest',
+	upload.fields([
+		{ name: 'symptoms', maxCount: 1 },
+		{ name: 'test', maxCount: 1 },
+	]),
+	(req, res) => {
+		const { body, files } = req;
+		const authHeader = req.headers.authorization;
+		let decodedVal = jwt.verify(authHeader, process.env.SECRET);
+		Doctor.findOne({ name: body.doc })
+			.then((data) => {
+				const currentDate = new Date();
+				const year = currentDate.getFullYear();
+				const month = (currentDate.getMonth() + 1)
+					.toString()
+					.padStart(2, '0');
+				const day = currentDate.getDate().toString().padStart(2, '0');
+				const formattedDate = `${year}-${month}-${day}`;
+				const prescription = new Prescription({
+					date: formattedDate,
+					treatment: data.specialization,
+					issue: body.description,
+					medicalReport: files['test'][0].filename,
+					symptom: files['symptoms'][0].filename,
+					doctor: data._id,
+					patient: decodedVal.id,
+				});
+				prescription
+					.save()
+					.then((response) => {
+						res.status(200).json({ data: response });
+					})
+					.catch((err) =>
+						res
+							.status(500)
+							.json({ mes: 'Failed to save prescription' })
+					);
+			})
+			.catch((err) =>
+				res.status(500).json({ mes: 'some database error' })
+			);
+	}
+);
+
 router.get('/activeTreatment', (req, res) => {
 	const authHeader = req.headers.authorization;
 	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	Prescription.find({ patient: decodedVal.id, active: true })
-		.populate('doctor', 'name')
+	Prescription.find({ doctor: decodedVal.id, active: true })
+		.populate('patient', 'name')
 		.then((data) => {
 			res.status(200).json({ data: data });
 		})
@@ -183,53 +213,69 @@ router.get('/activeTreatment', (req, res) => {
 router.get('/pastTreatment', (req, res) => {
 	const authHeader = req.headers.authorization;
 	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	Prescription.find({ patient: decodedVal.id, active: false })
-		.populate('doctor', 'name')
+	Prescription.find({ doctor: decodedVal.id, active: false })
+		.populate('patient', 'name')
 		.then((data) => {
 			res.status(200).json({ data: data });
 		})
 		.catch((err) => res.status(500).json({ mes: 'Some database error' }));
 });
 
-router.get('/patientDetail', (req, res) => {
-	const authHeader = req.headers.authorization;
-	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	User.findById(decodedVal.id)
+router.post('/addPrescription', (req, res) => {
+	const { body } = req;
+	console.log(body);
+	Prescription.updateOne(
+		{ _id: body.id },
+		{
+			$set: {
+				prescription: body.prescription,
+				active: false,
+			},
+		}
+	)
 		.then((data) => {
-			let date = new Date();
-			const age =
-				date.getFullYear() - parseInt(data.dob.split('-')[0]) - 1;
-			res.status(200).json({
-				data: {
-					height: data.height,
-					weight: data.weight,
-					bloodGroup: data.bloodGroup,
-					age: age,
-				},
-			});
+			res.status(200).json({ msg: 'success' });
 		})
-		.catch((err) => res.status(500).json({ mes: 'Some database error' }));
+		.catch((err) => res.status(400).json({ msg: 'failure' }));
 });
 
-router.get('/requests', (req, res) => {
-	const authHeader = req.headers.authorization;
-	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
-	Prescription.find({ patient: decodedVal.id })
+router.get('/getActivePrescription/:id', (req, res) => {
+	const id = req.params.id;
+	Prescription.findById(id)
+		.populate('patient')
 		.then((data) => {
-			total = data.length;
-			let arr = data.filter((val) => val.active === true);
-			active = arr.length;
-			arr = data.filter((val) => val.active === false);
-			past = arr.length;
-			res.status(200).json({
-				data: {
-					total: total,
-					active: active,
-					past: past,
-				},
-			});
+			const obj = {
+				name: data.patient.name,
+				dob: data.patient.dob,
+				gender: data.patient.gender,
+				bloodGroup: data.patient.bloodGroup,
+				height: data.patient.height,
+				weight: data.patient.weight,
+				illness: data.patient.illness,
+				allergy: data.patient.allergy,
+				issue: data.issue,
+				test: data.medicalReport,
+				symptom: data.symptom,
+			};
+			res.status(200).json(obj);
 		})
-		.catch((err) => res.status(500).json({ mes: 'Some database error' }));
+		.catch((err) => res.status(400).json({ msg: 'failure' }));
+});
+
+router.get('/getPastPrescription/:id', (req, res) => {
+	const id = req.params.id;
+	Prescription.findById(id)
+		.populate('patient')
+		.then((data) => {
+			const obj = {
+				issue: data.issue,
+				test: data.medicalReport,
+				symptom: data.symptom,
+				prescription: data.prescription,
+			};
+			res.status(200).json(obj);
+		})
+		.catch((err) => res.status(400).json({ msg: 'failure' }));
 });
 
 module.exports = router;
