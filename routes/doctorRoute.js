@@ -278,4 +278,23 @@ router.get('/getPastPrescription/:id', (req, res) => {
 		.catch((err) => res.status(400).json({ msg: 'failure' }));
 });
 
+router.post('/delete', (req, res) => {
+	const { body } = req;
+	const authHeader = req.headers.authorization;
+	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
+	Doctor.findById(decodedVal.id)
+		.then((data) => {
+			if (data.password === body.password) {
+				Doctor.deleteOne({ _id: decodedVal.id })
+					.then((data) => {
+						res.status(200).send(data);
+					})
+					.catch((err) => res.status(400).send(err));
+			} else {
+				res.status(500).send("doctor credential don't match");
+			}
+		})
+		.catch((err) => res.status(501).send(err));
+});
+
 module.exports = router;

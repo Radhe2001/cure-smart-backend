@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { log } = require('console');
 const prescriptionModel = require('../db/models/prescriptionModel');
+const { decode } = require('punycode');
 router.use(express.json());
 require('dotenv').config();
 
@@ -25,6 +26,7 @@ router.post('/register', (req, res) => {
 				const user = new User(body);
 				user.save()
 					.then((data) => {
+						v;
 						res.status(200).json({
 							msg: 'User registered succcessfully',
 						});
@@ -230,6 +232,69 @@ router.get('/requests', (req, res) => {
 			});
 		})
 		.catch((err) => res.status(500).json({ mes: 'Some database error' }));
+});
+
+async function findQueryWithGemini(query) {
+	// const apiKey = 'AIzaSyCgm6eXu35R3gsaQEI3W6zDSBHX3aqRxD8';
+	// const modelName = 'gemini-pro';
+	const url = `https://generativelanguage.googleapis.com/v1beta/models/${process.env.MODEL}:generateContent?key=${process.env.API_KEY}`;
+	const body = JSON.stringify({
+		contents: [
+			{
+				parts: [
+					{
+						text: query,
+					},
+				],
+			},
+		],
+	});
+	const response = await fetch(url, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		body,
+	});
+	if (!response.ok) {
+		throw new Error(
+			`Error fetching data from Gemini API: ${response.statusText}`
+		);
+	}
+	const data = await response.json();
+	return data;
+}
+
+router.post('/chat', (req, res) => {
+	const { body } = req;
+	const mes = ` What to do in such a case ${body.mes}  including medicine name and regimen Generate in 30 words in paragraph format`;
+	findQueryWithGemini(mes)
+		.then((data) => {
+			const generatedText = data.candidates[0].content.parts[0].text;
+			res.send(generatedText);
+		})
+		.catch((error) => {
+			console.error('Error:', error);
+		});
+});
+
+router.post('/delete', (req, res) => {
+	const { body } = req;
+	const authHeader = req.headers.authorization;
+	let decodedVal = jwt.verify(authHeader, process.env.SECRET);
+	User.findById(decodedVal.id)
+		.then((data) => {
+			if (data.password === body.password) {
+				User.deleteOne({ _id: decodedVal.id })
+					.then((data) => {
+						res.status(200).send(data);
+					})
+					.catch((err) => res.status(400).send(err));
+			} else {
+				res.status(500).send("user credential don't match");
+			}
+		})
+		.catch((err) => res.status(501).send(err));
 });
 
 module.exports = router;
