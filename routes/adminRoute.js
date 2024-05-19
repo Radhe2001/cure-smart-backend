@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const RegistrationRequest = require('../db/models/registrationRequestModel');
 const Doctor = require('../db/models/doctorModel');
-const Notification = require('../db/models/notificationModel');
+const Notification = require('../db/models/NotificationModel');
 router.use(express.json());
 require('dotenv').config();
 
